@@ -1,0 +1,38 @@
+# Consignes et fichiers locaux privés
+consignes/
+guide_projet_devops_*.pdf
+
+# Secrets et variables d'environnement (jamais versionnés)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.env
+backend/.env
+frontend/.env.local
+
+# Java / Maven
+target/
+**/target/
+.mvn/wrapper/maven-wrapper.jar
+
+# Node / Next.js
+node_modules/
+**/node_modules/
+.next/
+out/
+coverage/
+
+# IDE & outils locaux
+.idea/
+.vscode/
+.settings/
+.classpath
+.project
+*.iml
+.probe/
+
+# Journaux & OS
+*.log
+.DS_Store
+Thumbs.db
