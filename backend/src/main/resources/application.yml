@@ -9,7 +9,7 @@ spring:
       - optional:file:backend/.env[.properties]
 
 server:
-  port: 9999
+  port: 2525
 
 app:
   bootstrap:
