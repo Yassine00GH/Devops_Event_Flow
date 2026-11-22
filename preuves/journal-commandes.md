@@ -841,13 +841,64 @@ devops_eventflow-frontend-1   eventflow-frontend:dev   Up 4 minutes (healthy)   
 devops_eventflow-proxy-1      eventflow-proxy:dev      Up 4 minutes (healthy)   0.0.0.0:8000->8080/tcp, [::]:8000->8080/tcp
 ```
 
-### 4.6 Publication et PR #4 (`feat/compose` → `main`)
-- Push : `git push -u origin feat/compose`
-- PR #4 (`feat/compose` → `main`) : *(fusion `--no-ff` à compléter après validation sur GitHub)*
+### 4.6 Publication et fusion PR #4 (`feat/compose` → `main`)
 
-## Étape 5 — Pipeline CI
-- URL exécution rouge + 1re erreur utile :
-- URL exécution verte :
+```bash
+git add compose.yaml .env.example preuves/journal-commandes.md
+git status --short
+git commit -m "feat(compose): orchestrer db, backend, frontend et proxy Nginx"
+./scripts/check-project.sh
+git push -u origin feat/compose
+```
+Sortie (`$? = 0`) :
+```text
+[feat/compose 5403a54] feat(compose): orchestrer db, backend, frontend et proxy Nginx
+ 3 files changed, 269 insertions(+), 8 deletions(-)
+[SUCCES] tous les contrôles sont validés
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new branch]      feat/compose -> feat/compose
+```
+
+- **PR #4 fusionnée (`Create a merge commit` / `--no-ff`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/4` (merge commit `e3c0473`).
+
+```bash
+git switch main
+git pull --ff-only origin main
+git branch -d feat/compose
+./scripts/check-project.sh
+git log --oneline --graph --decorate --all -n 14
+```
+Sortie (`$? = 0`) :
+```text
+Updating 0ed9323..e3c0473
+Fast-forward
+Deleted branch feat/compose (was 5403a54).
+[SUCCES] tous les contrôles sont validés
+*   e3c0473 (HEAD -> main, origin/main) Merge pull request #4 from Yassine00GH/feat/compose
+|\  
+| * 5403a54 (origin/feat/compose) feat(compose): orchestrer db, backend, frontend et proxy Nginx
+|/  
+*   0ed9323 Merge pull request #3 from Yassine00GH/feat/dockerfiles
+```
+
+---
+
+## Étape 5 — Pipeline CI GitHub Actions (`ci/workflow` + PR #5 verte + PR #6 rouge)
+
+### 5.1 Création de `.github/workflows/ci.yml` sur la branche `ci/workflow` (PR #5 verte)
+
+```bash
+git switch -c ci/workflow
+mkdir -p .github/workflows
+git add .github/workflows/ci.yml preuves/journal-commandes.md
+git commit -m "ci: ajouter le workflow CI (contrôle, tests front/back et 3 builds)"
+./scripts/check-project.sh
+git push -u origin ci/workflow
+```
+- **URL exécution verte (PR #5 `ci/workflow` → `main`)** : *(à compléter après exécution sur GitHub Actions)*
+
+### 5.2 PR volontairement rouge (`demo/pipeline-rouge` → `main`, PR #6 laissée ouverte)
+- **URL exécution rouge + 1re erreur utile** : *(à compléter après ouverture de la PR #6)*
 
 ## Étape 6 — Release `v1.0.0` et staging
 - Digest images GHCR + sortie `wait-healthy.sh` :
