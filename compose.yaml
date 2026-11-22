@@ -1,0 +1,71 @@
+# Pile complète de développement EventFlow (proxy -> frontend + backend -> PostgreSQL)
+# Démarrage en 1 commande : cp .env.example .env && docker compose up -d --build
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: eventflow
+      POSTGRES_USER: eventflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventflow -d eventflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    # Port 5432 volontairement NON publié : seul backend y accède via le réseau privé Compose
+
+  backend:
+    build: ./backend
+    image: eventflow-backend:dev
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://db:5432/eventflow   # "db" = nom du service sur le réseau Compose
+      DB_USERNAME: eventflow
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+      JWT_SECRET: ${JWT_SECRET:?définir JWT_SECRET dans .env}
+      CORS_ALLOWED_ORIGINS: http://localhost:8000,http://localhost:3000
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@eventflow.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?définir ADMIN_PASSWORD dans .env}
+      PAYMENT_API_KEY: ${PAYMENT_API_KEY:-dev-fictif}
+      PAYMENT_SECRET_KEY: ${PAYMENT_SECRET_KEY:-dev-fictif}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ""
+    image: eventflow-frontend:dev
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  proxy:
+    build: ./proxy
+    image: eventflow-proxy:dev
+    ports:
+      - "8000:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:4.8.1
+    profiles: [debug]
+    ports:
+      - "8081:8080"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:

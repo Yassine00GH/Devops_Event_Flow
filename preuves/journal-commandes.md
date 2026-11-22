@@ -659,14 +659,191 @@ org.springframework.beans.factory.BeanCreationException: ... Factory method 'dat
 ```
 - **Diagnostic** : `backend` démarre en profil `prod` sous `appuser`, sans variable `DB_URL` définie (`application-prod.yml` n'a aucune valeur par défaut) → HikariDataSource échoue (`'url' must start with "jdbc"`) et le conteneur s'arrête avec `Exited (1)`.
 
-### 3.6 Publication et PR #3 (`feat/dockerfiles` → `main`)
-- Push : `git push -u origin feat/dockerfiles`
-- PR #3 (`feat/dockerfiles` → `main`) : *(fusion `--no-ff` à compléter après validation sur GitHub)*
+### 3.6 Publication et fusion PR #3 (`feat/dockerfiles` → `main`)
 
-## Étape 4 — Docker Compose
-- `docker compose ps` (`healthy`), `getent hosts db`, port 5432 fermé :
-- Persistance `essai` (`down` / `up -d`) :
-- Incident `DB_URL=localhost` :
+```bash
+git add backend/Dockerfile frontend/Dockerfile proxy/Dockerfile proxy/nginx.conf preuves/journal-commandes.md
+git commit -m "feat(docker): durcir les Dockerfiles v1.1 (non-root, HEALTHCHECK, proxy)"
+./scripts/check-project.sh
+git push -u origin feat/dockerfiles
+```
+Sortie (`$? = 0`) :
+```text
+[feat/dockerfiles 4106856] feat(docker): durcir les Dockerfiles v1.1 (non-root, HEALTHCHECK, proxy)
+ 5 files changed, 279 insertions(+), 13 deletions(-)
+[SUCCES] tous les contrôles sont validés
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new branch]      feat/dockerfiles -> feat/dockerfiles
+```
+
+- **PR #3 fusionnée (`Create a merge commit` / `--no-ff`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/3` (merge commit `0ed9323`).
+
+```bash
+git switch main
+git pull --ff-only origin main
+git branch -d feat/dockerfiles
+./scripts/check-project.sh
+git log --oneline --graph --decorate --all -n 14
+```
+Sortie (`$? = 0`) :
+```text
+Updating 6b0ab40..0ed9323
+Fast-forward
+Deleted branch feat/dockerfiles (was 4106856).
+[SUCCES] tous les contrôles sont validés
+*   0ed9323 (HEAD -> main, origin/main) Merge pull request #3 from Yassine00GH/feat/dockerfiles
+|\  
+| * 4106856 (origin/feat/dockerfiles) feat(docker): durcir les Dockerfiles v1.1 (non-root, HEALTHCHECK, proxy)
+| * 9ff7b92 feat(docker): ajouter les Dockerfiles v1.0 et .dockerignore
+| * eb638f9 feat(frontend): activer standalone, URLs relatives et polices locales
+| * 4e7bab4 feat(backend): ajouter et tester la route publique /health
+|/  
+*   6b0ab40 Merge pull request #2 from Yassine00GH/chore/project-check
+```
+
+## Étape 4 — Orchestration Docker Compose (`feat/compose` + PR #4)
+
+### 4.1 Préparation de `.env` (non versionné) et validation de `compose.yaml`
+
+```bash
+git switch -c feat/compose
+cp .env.example .env
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 12)|" .env
+sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 32)|" .env
+sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=EfAdmin$(openssl rand -hex 6)!|" .env
+chmod 600 .env
+git check-ignore -v .env
+docker compose config --quiet && echo "compose.yaml valide"
+```
+Sortie (`$? = 0`, aucun secret affiché) :
+```text
+Switched to a new branch 'feat/compose'
+.gitignore:10:*.env	.env
+compose.yaml valide
+```
+
+### 4.2 Démarrage de la pile complète, réseau privé, `/health` et port `5432` fermé
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl -fsS http://localhost:8000/health
+curl -fsSI http://localhost:8000/ | head -n 5
+docker compose exec -T backend getent hosts db
+docker compose exec -T proxy getent hosts backend frontend
+ss -ltnp | grep ':5432' || echo "Port 5432 bien fermé sur l'hôte"
+```
+Sortie (`$? = 0`) :
+```text
+[+] up 9/9
+ ✔ Image eventflow-backend:dev           Built    2.6s
+ ✔ Image eventflow-frontend:dev          Built    2.6s
+ ✔ Image eventflow-proxy:dev             Built    2.7s
+ ✔ Network devops_eventflow_default      Created  0.1s
+ ✔ Volume devops_eventflow_pgdata        Created  0.0s
+ ✔ Container devops_eventflow-db-1       Healthy  6.3s
+ ✔ Container devops_eventflow-backend-1  Healthy  17.6s
+ ✔ Container devops_eventflow-frontend-1 Healthy  22.5s
+ ✔ Container devops_eventflow-proxy-1    Started  22.7s
+
+NAME                          IMAGE                    STATUS                        PORTS
+devops_eventflow-backend-1    eventflow-backend:dev    Up About a minute (healthy)   2525/tcp
+devops_eventflow-db-1         postgres:17-alpine       Up About a minute (healthy)   5432/tcp
+devops_eventflow-frontend-1   eventflow-frontend:dev   Up 53 seconds (healthy)       3000/tcp
+devops_eventflow-proxy-1      eventflow-proxy:dev      Up 47 seconds (healthy)       0.0.0.0:8000->8080/tcp, [::]:8000->8080/tcp
+
+{"status":"ok","database":"up"}
+
+HTTP/1.1 200 OK
+Server: nginx/1.27.5
+Content-Type: text/html; charset=utf-8
+
+172.18.0.2        db  db
+172.18.0.3        backend  backend
+172.18.0.4        frontend  frontend
+
+Port 5432 bien fermé sur l'hôte
+```
+
+### 4.3 Preuve de persistance du volume nommé `pgdata`
+
+```bash
+docker compose exec -T db psql -U eventflow -d eventflow -c "create table essai(id int); insert into essai values (1);"
+docker compose down
+docker compose up -d
+docker compose exec -T db psql -U eventflow -d eventflow -c "select * from essai;"
+docker compose exec -T db psql -U eventflow -d eventflow -c "drop table essai;"
+docker volume ls | grep pgdata
+```
+Sortie (`$? = 0`) :
+```text
+CREATE TABLE
+INSERT 0 1
+# après docker compose down && docker compose up -d :
+ id 
+----
+  1
+(1 row)
+DROP TABLE
+local     devops_eventflow_pgdata
+```
+
+### 4.4 Simulation d'incident volontaire (`DB_URL=jdbc:postgresql://localhost:5432/eventflow`)
+
+```bash
+# Remplacement temporaire de "db" par "localhost" dans DB_URL de compose.yaml
+docker compose up -d --force-recreate --no-deps backend
+sleep 8
+docker compose ps
+docker compose logs --tail=40 backend
+docker inspect devops_eventflow-backend-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DB_' | sed 's/^DB_PASSWORD=.*/DB_PASSWORD=***MASQUE***/'
+```
+Sortie (`$? = 0`) :
+```text
+Caused by: java.net.ConnectException: Connection refused
+  at org.postgresql.core.PGStream.createSocket(PGStream.java:261)
+  ...
+DB_USERNAME=eventflow
+DB_PASSWORD=***MASQUE***
+DB_URL=jdbc:postgresql://localhost:5432/eventflow
+```
+
+**Méthode de diagnostic en 4 points (atelier 4) :**
+1. **Symptôme observé (`docker compose ps`)** : `backend` redémarre en boucle (`health: starting` puis crash) alors que `db` est `healthy`.
+2. **Preuve dans les logs (`docker compose logs backend`)** : Flyway / HikariCP lève `java.net.ConnectException: Connection refused` lors de la connexion PostgreSQL.
+3. **Cause racine (`env` / `inspect`)** : `DB_URL` pointe vers `localhost:5432` ; or dans un conteneur Docker, `localhost` désigne le conteneur `backend` lui-même (où aucun PostgreSQL n'écoute), et non le conteneur `db`.
+4. **Résolution & vérification** : rétablissement de `DB_URL: jdbc:postgresql://db:5432/eventflow` (nom du service résolu par le DNS privé Compose), recréation de `backend`, puis validation par `curl -fsS http://localhost:8000/health` → `{"status":"ok","database":"up"}`.
+
+```bash
+# Après rétablissement de DB_URL vers db:5432
+docker compose up -d --force-recreate --no-deps backend
+curl -fsS http://localhost:8000/health
+```
+Sortie (`$? = 0`) :
+```text
+{"status":"ok","database":"up"}
+```
+
+### 4.5 Vérification du profil optionnel `debug` (`adminer` sur `:8081`) et arrêt propre
+
+```bash
+docker compose --profile debug up -d
+docker compose ps
+docker compose --profile debug down
+```
+Sortie (`$? = 0`) :
+```text
+NAME                          IMAGE                    STATUS                   PORTS
+devops_eventflow-adminer-1    adminer:4.8.1            Up 1 second              0.0.0.0:8081->8080/tcp, [::]:8081->8080/tcp
+devops_eventflow-backend-1    eventflow-backend:dev    Up 2 minutes (healthy)   2525/tcp
+devops_eventflow-db-1         postgres:17-alpine       Up 5 minutes (healthy)   5432/tcp
+devops_eventflow-frontend-1   eventflow-frontend:dev   Up 4 minutes (healthy)   3000/tcp
+devops_eventflow-proxy-1      eventflow-proxy:dev      Up 4 minutes (healthy)   0.0.0.0:8000->8080/tcp, [::]:8000->8080/tcp
+```
+
+### 4.6 Publication et PR #4 (`feat/compose` → `main`)
+- Push : `git push -u origin feat/compose`
+- PR #4 (`feat/compose` → `main`) : *(fusion `--no-ff` à compléter après validation sur GitHub)*
 
 ## Étape 5 — Pipeline CI
 - URL exécution rouge + 1re erreur utile :
