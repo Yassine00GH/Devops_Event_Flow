@@ -895,13 +895,77 @@ git commit -m "ci: ajouter le workflow CI (contrôle, tests front/back et 3 buil
 ./scripts/check-project.sh
 git push -u origin ci/workflow
 ```
-- **URL exécution verte (PR #5 `ci/workflow` → `main`)** : *(à compléter après exécution sur GitHub Actions)*
+- **PR #5 fusionnée (`Create a merge commit` / `--no-ff`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/5` (merge commit `04995d2`).
+- **URL exécution verte (PR #5)** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45045828874`
+  ```text
+  Contrôle du projet: completed / success
+  Tests frontend: completed / success
+  Tests backend: completed / success
+  Build des 3 images Docker: completed / success
+  Artefacts : rapport-tests-frontend (1033 B), rapport-tests-backend (19229 B)
+  ```
+
+```bash
+git switch main
+git pull --ff-only origin main
+git branch -d ci/workflow
+```
+Sortie (`$? = 0`) :
+```text
+Updating e3c0473..04995d2
+Fast-forward
+Deleted branch ci/workflow (was 0960771).
+```
 
 ### 5.2 PR volontairement rouge (`demo/pipeline-rouge` → `main`, PR #6 laissée ouverte)
-- **URL exécution rouge + 1re erreur utile** : *(à compléter après ouverture de la PR #6)*
 
-## Étape 6 — Release `v1.0.0` et staging
-- Digest images GHCR + sortie `wait-healthy.sh` :
+```bash
+git switch -c demo/pipeline-rouge
+# Modification volontaire dans HealthController.java : "status", "ok" -> "status", "up"
+git add backend/src/main/java/com/iset/events/controller/HealthController.java
+git commit -m "test(demo): provoquer un échec volontaire pour la soutenance"
+git push -u origin demo/pipeline-rouge
+git switch main
+```
+Sortie (`$? = 0`) :
+```text
+[demo/pipeline-rouge 36d7e56] test(demo): provoquer un échec volontaire pour la soutenance
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new branch]      demo/pipeline-rouge -> demo/pipeline-rouge
+Switched to branch 'main'
+```
+
+- **PR #6 ouverte (NE PAS FUSIONNER)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/6`
+- **URL exécution rouge (PR #6)** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45047350051`
+  ```text
+  Contrôle du projet: completed / success
+  Tests frontend: completed / success
+  Tests backend: completed / failure
+  Build des 3 images Docker: completed / skipped (bloqué par needs)
+  Artefacts conservés (if: always()) : rapport-tests-backend (20303 B), rapport-tests-frontend (1041 B)
+  1re erreur utile : JSON path "$.status" expected:<ok> but was:<up>
+  ```
+
+---
+
+## Étape 6 — Release `v1.0.0` et mise en service staging (`feat/staging` + PR #7 + tag `v1.0.0`)
+
+### 6.1 Préparation de la livraison GHCR et des scripts staging (`feat/staging`)
+
+```bash
+git switch -c feat/staging
+chmod +x scripts/wait-healthy.sh scripts/deploy-staging.sh
+bash -n scripts/wait-healthy.sh scripts/deploy-staging.sh scripts/check-project.sh
+git add .github/workflows/ci.yml compose.staging.yaml .env.staging.example .env.deploy.example \
+  scripts/wait-healthy.sh scripts/deploy-staging.sh scripts/check-project.sh preuves/journal-commandes.md
+git commit -m "feat(staging): ajouter compose staging, scripts de santé et publication GHCR"
+./scripts/check-project.sh
+git push -u origin feat/staging
+```
+
+### 6.2 Tag annoté `v1.0.0`, publication GHCR et déploiement staging (`http://localhost:8080`)
+- Digest images GHCR + sortie `wait-healthy.sh` : *(à compléter après fusion PR #7 et publication du tag `v1.0.0`)*
 
 ## Étape 7 — Incident `v1.1.0` et rollback `v1.0.0`
 - Sortie `wait-healthy.sh` en échec (`v1.1.0`) + logs :

@@ -23,6 +23,18 @@ required=(
   backend/pom.xml
   backend/.env.example
   frontend/package.json
+  compose.yaml
+  compose.staging.yaml
+  .env.example
+  .env.staging.example
+  .env.deploy.example
+  backend/Dockerfile
+  frontend/Dockerfile
+  proxy/Dockerfile
+  proxy/nginx.conf
+  scripts/wait-healthy.sh
+  scripts/deploy-staging.sh
+  .github/workflows/ci.yml
 )
 
 for file in "${required[@]}"; do
