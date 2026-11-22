@@ -1,0 +1,11 @@
+target/
+.env*
+.mvn/wrapper/maven-wrapper.jar
+.idea/
+.vscode/
+.settings/
+.classpath
+.project
+*.log
+test_all_apis.ps1
+HELP.md
