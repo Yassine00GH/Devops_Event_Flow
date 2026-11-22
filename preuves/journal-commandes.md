@@ -1042,9 +1042,108 @@ ghcr.io/yassine00gh/eventflow-frontend@sha256:37de2db0afa8b42d699f303fcb63984ec2
 ghcr.io/yassine00gh/eventflow-proxy@sha256:644f836257d2988c3510d54ac359b26b91657af37952d9a1fb3c10832c5416e2
 ```
 
-## Étape 7 — Incident `v1.1.0` et rollback `v1.0.0`
-- Sortie `wait-healthy.sh` en échec (`v1.1.0`) + logs :
-- Sortie `wait-healthy.sh` après rollback (`v1.0.0`) + durée :
+## Étape 7 — Incident `v1.1.0`, rollback `v1.0.0` et correctif `v1.1.1`
+
+### 7.1 Production de la version défectueuse `v1.1.0` (`server.port: 9999`, PR #9 verte)
+
+```bash
+git switch -c feat/port-9999
+# Modification dans backend/src/main/resources/application.yml : port: 2525 -> port: 9999
+git add backend/src/main/resources/application.yml
+git commit -m "feat(backend): basculer le port HTTP interne sur 9999"
+git push -u origin feat/port-9999
+```
+- **PR #9 fusionnée (`Create a merge commit` / `--no-ff`, 4 checks verts malgré le bug car MockMvc n'ouvre pas de port TCP)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/9` (merge commit `e6f6f5a`, commit fautif `d2c55d2`).
+- **Tag `v1.1.0` publié sur GHCR** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45057338075`
+
+```bash
+git switch main && git pull --ff-only origin main
+git branch -d feat/port-9999
+git tag -a v1.1.0 -m "Release 1.1.0"
+git push origin v1.1.0
+```
+Sortie (`$? = 0`) :
+```text
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new tag]         v1.1.0 -> v1.1.0
+```
+
+### 7.2 Déploiement défaillant `v1.1.0` (`exit 1`), sortie `wait-healthy.sh` et journaux
+
+```bash
+docker pull ghcr.io/yassine00gh/eventflow-proxy:v1.1.0
+docker pull ghcr.io/yassine00gh/eventflow-frontend:v1.1.0
+docker pull ghcr.io/yassine00gh/eventflow-backend:v1.1.0
+TRIES=6 time ./scripts/deploy-staging.sh v1.1.0
+echo "Code sortie deploy-staging v1.1.0 (attendu 1) : $?"
+TRIES=3 bash scripts/wait-healthy.sh http://localhost:8082/health
+echo "Code sortie wait-healthy (attendu 1) : $?"
+docker compose --env-file .env.deploy -f compose.staging.yaml logs --tail=35 backend
+```
+Sortie :
+```text
+Heure detection incident : 19:59:50
+[DEPLOY] 19:59:50 déploiement de ghcr.io/yassine00gh/eventflow-*:v1.1.0 (port 8082)
+ ✘ Container eventflow-staging-backend-1  Error dependency backend...     102.8s
+dependency failed to start: container eventflow-staging-backend-1 is unhealthy
+Command exited with non-zero status 1
+Code sortie deploy-staging v1.1.0 (attendu 1) : 1
+
+curl: (7) Failed to connect to localhost port 8082 after 0 ms: Could not connect to server
+[SANTE] tentative 1/3 : service pas encore prêt (attente 5 s)
+[SANTE] tentative 2/3 : service pas encore prêt (attente 5 s)
+[SANTE] tentative 3/3 : service pas encore prêt (attente 5 s)
+[SANTE] staging NON sain après 15 s : http://localhost:8082/health
+Code sortie wait-healthy (attendu 1) : 1
+
+# Première erreur utile relevée dans les journaux backend :
+backend-1 | 2026-11-22T18:59:58.503Z INFO ... TomcatWebServer : Tomcat initialized with port 9999 (http)
+backend-1 | 2026-11-22T19:00:03.953Z INFO ... TomcatWebServer : Tomcat started on port 9999 (http) with context path '/'
+```
+
+### 7.3 Rollback immédiat vers `v1.0.0` (aucune reconstruction, `exit 0`)
+
+```bash
+time ./scripts/deploy-staging.sh v1.0.0
+echo "Code sortie rollback v1.0.0 (attendu 0) : $?"
+docker compose --env-file .env.deploy -f compose.staging.yaml ps
+curl -fsS http://localhost:8082/health
+```
+Sortie (`$? = 0`) :
+```text
+ ✔ Container eventflow-staging-db-1       Healthy   1.3s
+ ✔ Container eventflow-staging-backend-1  Healthy  12.7s
+ ✔ Container eventflow-staging-frontend-1 Healthy  17.3s
+ ✔ Container eventflow-staging-proxy-1    Started  17.3s
+[SANTE] tentative 1/24 : service pas encore prêt (attente 5 s)
+{"status":"ok","database":"up"}
+[SANTE] staging sain : http://localhost:8082/health
+[DEPLOY] 20:02:16 version v1.0.0 en service et saine
+
+real	0m25.694s
+Code sortie rollback v1.0.0 (attendu 0) : 0
+Duree rollback seul (s) : 26
+Duree indisponibilite totale (s) : 146
+
+NAME                           IMAGE                                           STATUS                    PORTS
+eventflow-staging-backend-1    ghcr.io/yassine00gh/eventflow-backend:v1.0.0    Up 21 seconds (healthy)   2525/tcp
+eventflow-staging-db-1         postgres:17-alpine                              Up 50 minutes (healthy)   5432/tcp
+eventflow-staging-frontend-1   ghcr.io/yassine00gh/eventflow-frontend:v1.0.0   Up 10 seconds (healthy)   3000/tcp
+eventflow-staging-proxy-1      ghcr.io/yassine00gh/eventflow-proxy:v1.0.0      Up 5 seconds (healthy)    0.0.0.0:8082->8080/tcp
+```
+
+### 7.4 Correction par `git revert`, post-mortem et release `v1.1.1`
+
+```bash
+git switch -c docs/incident-report
+git revert --no-edit d2c55d2
+git add docs/incident-postmortem.md preuves/journal-commandes.md
+git commit -m "docs: ajouter le compte rendu d'incident v1.1.0 et ses preuves"
+./scripts/check-project.sh
+git push -u origin docs/incident-report
+```
+- Commit revert : `f70d82b Revert "feat(backend): basculer le port HTTP interne sur 9999"` (`port: 9999` → `port: 2525`).
+- PR #10 (`docs/incident-report` → `main`) + tag `v1.1.1` + `./scripts/deploy-staging.sh v1.1.1` : *(à compléter après fusion PR #10 et publication de `v1.1.1`)*
 
 ## Étape 8 — Bonus
 - Preuve protection `main` / matrice / tag `v1.2.0` :

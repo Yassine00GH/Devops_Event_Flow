@@ -1,0 +1,7 @@
+# Compte rendu d'incident — Release v1.1.0
+
+1. **Ce qui s'est passé :** La mise en service de `v1.1.0` a rendu l'application indisponible (`container eventflow-staging-backend-1 is unhealthy` et `/health` en échec sur `http://localhost:8082/health`) parce que `backend` a démarré sur le port `9999` alors que son `HEALTHCHECK` et `proxy` Nginx ciblent `backend:2525` (anomalie passée inaperçue aux tests CI `MockMvc` qui n'ouvrent pas de vrai port TCP).
+2. **Quand nous l'avons su :** À `19:59:50` (heure locale), dès l'exécution de `TRIES=6 time ./scripts/deploy-staging.sh v1.1.0` : `deploy-staging.sh` et `wait-healthy.sh` ont échoué (code `1`), et les journaux `backend` ont révélé `Tomcat started on port 9999 (http) with context path '/'`.
+3. **Action menée :** Retour arrière immédiat vers l'image immuable saine `v1.0.0` (`time ./scripts/deploy-staging.sh v1.0.0`) sans aucune reconstruction, puis annulation propre du commit fautif `d2c55d2` par `git revert --no-edit d2c55d2` (commit `f70d82b`, sans jamais déplacer le tag `v1.1.0`) et livraison de `v1.1.1`.
+4. **Durée d'indisponibilité :** `146` secondes au total entre le déclenchement du déploiement défaillant `v1.1.0` (`19:59:50`) et la restauration saine de `v1.0.0` (`20:02:16`), dont **`26` secondes** (`real 0m25.694s`) pour l'exécution du rollback seul.
+5. **Prévention :** Exécuter automatiquement un smoke-test de la pile complète en CI à chaque tag `v*` avant validation de la livraison (mis en place à l'Étape 8 via le job `deploy-staging`).
