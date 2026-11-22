@@ -5,6 +5,9 @@
  */
 
 :root {
+  --font-inter: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-cairo: "Tahoma", "Segoe UI", Arial, sans-serif;
+
   /* Brand palette */
   --ef-navy: #1E3A8A;
   --ef-primary: #2563EB;
