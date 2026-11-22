@@ -1143,7 +1143,39 @@ git commit -m "docs: ajouter le compte rendu d'incident v1.1.0 et ses preuves"
 git push -u origin docs/incident-report
 ```
 - Commit revert : `f70d82b Revert "feat(backend): basculer le port HTTP interne sur 9999"` (`port: 9999` → `port: 2525`).
-- PR #10 (`docs/incident-report` → `main`) + tag `v1.1.1` + `./scripts/deploy-staging.sh v1.1.1` : *(à compléter après fusion PR #10 et publication de `v1.1.1`)*
+- **PR #10 fusionnée (`Create a merge commit` / `--no-ff`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/10` (merge commit `cbbe51e`).
+- **Tag `v1.1.1` publié sur GHCR** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45059773356` (`Success` en `4m 11s`).
 
-## Étape 8 — Bonus
-- Preuve protection `main` / matrice / tag `v1.2.0` :
+```bash
+git switch main && git pull --ff-only origin main
+git branch -d docs/incident-report
+git tag -a v1.1.1 -m "Release 1.1.1 : rétablissement du port 2525"
+git push origin v1.1.1
+./scripts/deploy-staging.sh v1.1.1
+echo "Code sortie v1.1.1 : $?"
+curl -fsS http://localhost:8082/health
+```
+Sortie (`$? = 0`) :
+```text
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new tag]         v1.1.1 -> v1.1.1
+{"status":"ok","database":"up"}
+[SANTE] staging sain : http://localhost:8082/health
+[DEPLOY] 20:25:26 version v1.1.1 en service et saine
+Code sortie v1.1.1 : 0
+```
+
+---
+
+## Étape 8 — Bonus (+4 points : protection `main`, matrice Node/Java, deploy auto sur tag `v1.2.0`)
+
+### 8.1 Ajout des matrices (`Node 20/22`, `Java 17/21`) et du job `deploy-staging` sur `ci/bonus-matrice-deploy`
+
+```bash
+git switch -c ci/bonus-matrice-deploy
+git add .github/workflows/ci.yml preuves/journal-commandes.md
+git commit -m "ci(bonus): ajouter matrices Node/Java et déploiement auto staging sur tag"
+./scripts/check-project.sh
+git push -u origin ci/bonus-matrice-deploy
+```
+- **Preuve protection `main` / matrice / tag `v1.2.0`** : *(à compléter après fusion PR #11, activation des règles de branche et publication du tag `v1.2.0`)*
