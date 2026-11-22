@@ -35,7 +35,8 @@ import type {
   ValidateUserRequest,
 } from "@/types/api";
 
-export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:2525").replace(/\/+$/, "");
+const rawApiUrl = process.env.NEXT_PUBLIC_API_URL;
+export const API_BASE_URL = (rawApiUrl !== undefined ? rawApiUrl : "http://localhost:2525").replace(/\/+$/, "");
 
 export class ApiError extends Error {
   readonly status: number;
@@ -90,14 +91,17 @@ export interface RequestOptions {
 }
 
 function buildUrl(path: string, query?: Query): string {
-  const url = new URL(API_BASE_URL + path);
+  const target = API_BASE_URL + path;
+  const url = API_BASE_URL
+    ? new URL(target)
+    : new URL(target, typeof window !== "undefined" ? window.location.origin : "http://localhost");
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value === undefined || value === null || value === "") continue;
       url.searchParams.set(key, String(value));
     }
   }
-  return url.toString();
+  return API_BASE_URL ? url.toString() : `${url.pathname}${url.search}`;
 }
 
 function defaultCodeForStatus(status: number): string {

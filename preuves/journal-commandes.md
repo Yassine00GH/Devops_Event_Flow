@@ -455,13 +455,213 @@ Code sortie (attendu 1) : 1
 Code sortie (attendu 0) : 0
 ```
 
-### 2.5 Publication et PR #2 (`chore/project-check` → `main`)
-- Push : `git push -u origin chore/project-check`
-- PR #2 (`chore/project-check` → `main`) : *(fusion `--no-ff` à compléter après validation sur GitHub)*
+### 2.5 Publication et fusion PR #2 (`chore/project-check` → `main`)
 
-## Étape 3 — Conteneurisation (`v1.0` -> `v1.1`)
-- Tailles `docker image ls` / `whoami` / `HEALTHCHECK` :
-- Diagnostic d'incident conteneur :
+```bash
+git add preuves/journal-commandes.md
+git commit -m "docs: consigner les sorties du script de contrôle"
+git push -u origin chore/project-check
+```
+Sortie (`$? = 0`) :
+```text
+[chore/project-check d2816ca] docs: consigner les sorties du script de contrôle
+ 1 file changed, 172 insertions(+), 4 deletions(-)
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new branch]      chore/project-check -> chore/project-check
+branch 'chore/project-check' set up to track 'origin/chore/project-check'.
+```
+
+- **PR #2 fusionnée (`Create a merge commit` / `--no-ff`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/2` (merge commit `6b0ab40`).
+
+```bash
+git switch main
+git pull --ff-only origin main
+git branch -d chore/project-check
+./scripts/check-project.sh
+git log --oneline --graph --decorate --all -n 12
+```
+Sortie (`$? = 0`) :
+```text
+Updating 25c2dc8..6b0ab40
+Fast-forward
+Deleted branch chore/project-check (was d2816ca).
+[SUCCES] tous les contrôles sont validés
+*   6b0ab40 (HEAD -> main, origin/main) Merge pull request #2 from Yassine00GH/chore/project-check
+|\  
+| * d2816ca (origin/chore/project-check) docs: consigner les sorties du script de contrôle
+| * 27221b5 chore: ajouter le script de contrôle du projet
+|/  
+*   25c2dc8 Merge pull request #1 from Yassine00GH/docs/readme
+```
+
+---
+
+## Étape 3 — Conteneurisation (`v1.0` -> `v1.1`, `feat/dockerfiles` + PR #3)
+
+### 3.1 Branche dédiée et adaptations applicatives (Partie A)
+
+```bash
+git switch -c feat/dockerfiles
+mkdir -p proxy
+git add backend/src/main/java/com/iset/events/controller/HealthController.java \
+  backend/src/main/java/com/iset/events/config/SecurityConfiguration.java \
+  backend/src/test/java/com/iset/events/HealthControllerTest.java
+git commit -m "feat(backend): ajouter et tester la route publique /health"
+
+git add frontend/src/lib/api.ts frontend/src/app/layout.tsx frontend/src/styles/theme.css frontend/next.config.ts
+git commit -m "feat(frontend): activer standalone, URLs relatives et polices locales"
+```
+Sortie (`$? = 0`) :
+```text
+Switched to a new branch 'feat/dockerfiles'
+[feat/dockerfiles 4e7bab4] feat(backend): ajouter et tester la route publique /health
+ 3 files changed, 59 insertions(+)
+[feat/dockerfiles eb638f9] feat(frontend): activer standalone, URLs relatives et polices locales
+ 4 files changed, 12 insertions(+), 18 deletions(-)
+```
+
+### 3.2 Construction et commit des Dockerfiles `v1.0` (root, sans `HEALTHCHECK`)
+
+```bash
+docker build -t eventflow-backend:1.0 ./backend
+docker build -t eventflow-frontend:1.0 ./frontend
+docker run --rm --entrypoint whoami eventflow-backend:1.0
+git add backend/.dockerignore frontend/.dockerignore proxy/.dockerignore backend/Dockerfile frontend/Dockerfile
+git commit -m "feat(docker): ajouter les Dockerfiles v1.0 et .dockerignore"
+```
+Sortie (`$? = 0`) :
+```text
+[+] Building 500.4s (15/15) FINISHED -> naming to docker.io/library/eventflow-backend:1.0
+[+] Building 165.8s (14/14) FINISHED -> naming to docker.io/library/eventflow-frontend:1.0
+root
+[feat/dockerfiles 9ff7b92] feat(docker): ajouter les Dockerfiles v1.0 et .dockerignore
+ 5 files changed, 51 insertions(+)
+```
+
+### 3.3 Durcissement `v1.1` (non-root, `HEALTHCHECK`, proxy Nginx unprivileged) et inspection des couches
+
+> Note : `HOSTNAME=0.0.0.0` dans `frontend/Dockerfile` empêche l'erreur classique d'écoute sur `127.0.0.1` qui bloquerait les connexions depuis le conteneur `proxy`.
+
+```bash
+docker build -t eventflow-backend:1.1 ./backend
+docker build -t eventflow-frontend:1.1 ./frontend
+docker build -t eventflow-proxy:1.1 ./proxy
+docker image ls "eventflow-*"
+```
+Sortie (`$? = 0`) :
+```text
+[+] Building 3.9s (16/16) FINISHED  -> docker.io/library/eventflow-backend:1.1
+[+] Building 22.0s (14/14) FINISHED -> docker.io/library/eventflow-frontend:1.1
+[+] Building 20.4s (7/7) FINISHED   -> docker.io/library/eventflow-proxy:1.1
+
+IMAGE                    ID             DISK USAGE   CONTENT SIZE
+eventflow-backend:1.0    cba9fdf624c7        379MB          124MB
+eventflow-backend:1.1    dea99d4eaaf4        379MB          124MB
+eventflow-frontend:1.0   e7e170e0812b        340MB         86.6MB
+eventflow-frontend:1.1   4159862016fc        340MB         86.7MB
+eventflow-proxy:1.1      668dfef6f5e7       73.7MB           21MB
+```
+
+```bash
+docker history eventflow-backend:1.1
+docker history eventflow-frontend:1.1
+```
+Sortie (`$? = 0`) :
+```text
+# eventflow-backend:1.1 (extraits couches supérieures)
+ENTRYPOINT ["java" "-jar" "/app/app.jar"]       0B
+HEALTHCHECK {Test:[CMD-SHELL wget -qO- http:…   0B
+EXPOSE [2525/tcp]                               0B
+ENV SPRING_PROFILES_ACTIVE=prod                 0B
+USER appuser                                    0B
+COPY --chown=appuser:app /src/target/*.jar a…   60.1MB
+RUN /bin/sh -c addgroup -S app && adduser -S…   41kB
+
+# eventflow-frontend:1.1 (extraits couches supérieures)
+CMD ["node" "server.js"]                        0B
+HEALTHCHECK {Test:[CMD-SHELL wget -qO- http:…   0B
+EXPOSE [3000/tcp]                               0B
+USER node                                       0B
+COPY --chown=node:node /app/public ./public …   897kB
+COPY --chown=node:node /app/.next/static ./.…   1.38MB
+COPY --chown=node:node /app/.next/standalone…   73.5MB
+ENV HOSTNAME=0.0.0.0                            0B
+```
+
+```bash
+docker run --rm --entrypoint whoami eventflow-backend:1.1
+docker run --rm --entrypoint whoami eventflow-frontend:1.1
+docker run --rm --entrypoint whoami eventflow-proxy:1.1
+```
+Sortie (`$? = 0`) :
+```text
+appuser
+node
+nginx
+```
+
+### 3.4 Vérification `HEALTHCHECK` en exécution réelle (proxy et frontend)
+
+```bash
+docker run -d --name ef-proxy-test --add-host backend:127.0.0.1 --add-host frontend:127.0.0.1 -p 8089:8080 eventflow-proxy:1.1
+docker exec ef-proxy-test whoami
+sleep 12
+docker inspect --format '{{.State.Health.Status}}' ef-proxy-test
+curl -fsS http://127.0.0.1:8089/nginx-health
+docker rm -f ef-proxy-test
+```
+Sortie (`$? = 0`) :
+```text
+nginx
+healthy
+ok
+ef-proxy-test
+```
+*(Remarque technique : lancé totalement isolé sans réseau Compose ni `--add-host`, Nginx signale logiquement `host not found in upstream "backend"` car les noms DNS internes `backend` et `frontend` sont fournis par Docker Compose à l'Étape 4 ; `--add-host` permet de valider `/nginx-health` et le `HEALTHCHECK` en autonomie.)*
+
+```bash
+docker run -d --name ef-front-test -p 3009:3000 eventflow-frontend:1.1
+docker exec ef-front-test whoami
+sleep 17
+docker inspect --format '{{.State.Health.Status}}' ef-front-test
+docker rm -f ef-front-test
+```
+Sortie (`$? = 0`) :
+```text
+node
+healthy
+ef-front-test
+```
+
+### 3.5 Incident volontaire conteneur (`ef-casse`, diagnostic `docker ps -a` et `docker logs`)
+
+```bash
+docker run -d --name ef-casse -p 2525:2525 eventflow-backend:1.1
+sleep 5
+docker ps
+docker ps -a --filter name=ef-casse
+docker logs ef-casse 2>&1 | head -n 40
+docker rm -f ef-casse
+```
+Sortie (`$? = 0`) :
+```text
+=== docker ps ===
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+=== docker ps -a ===
+CONTAINER ID   IMAGE                   COMMAND                  CREATED         STATUS                    PORTS     NAMES
+b926358d7b24   eventflow-backend:1.1   "java -jar /app/app.…"   5 seconds ago   Exited (1) 1 second ago             ef-casse
+=== docker logs ef-casse (extrait clé) ===
+Starting EventsApplication v0.0.1-SNAPSHOT using Java 17.0.21.1 with PID 1 (/app/app.jar started by appuser in /app)
+The following 1 profile is active: "prod"
+...
+ERROR 1 --- [eventflow-backend] [main] o.s.boot.SpringApplication : Application run failed
+org.springframework.beans.factory.BeanCreationException: ... Factory method 'dataSource' threw exception with message: 'url' must start with "jdbc"
+```
+- **Diagnostic** : `backend` démarre en profil `prod` sous `appuser`, sans variable `DB_URL` définie (`application-prod.yml` n'a aucune valeur par défaut) → HikariDataSource échoue (`'url' must start with "jdbc"`) et le conteneur s'arrête avec `Exited (1)`.
+
+### 3.6 Publication et PR #3 (`feat/dockerfiles` → `main`)
+- Push : `git push -u origin feat/dockerfiles`
+- PR #3 (`feat/dockerfiles` → `main`) : *(fusion `--no-ff` à compléter après validation sur GitHub)*
 
 ## Étape 4 — Docker Compose
 - `docker compose ps` (`healthy`), `getent hosts db`, port 5432 fermé :
