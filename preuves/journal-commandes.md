@@ -252,7 +252,41 @@ branch 'main' set up to track 'origin/main'.
 ---
 
 ## Étape 1 — Documentation & premières PR (`--no-ff`)
-- PR #1 (`docs/readme`) :
+
+### 1.1 Synchronisation de `main` et création de la branche dédiée `docs/readme`
+
+```bash
+git switch main
+git pull --ff-only origin main
+git switch -c docs/readme
+```
+Sortie (`$? = 0`) :
+```text
+Already on 'main'
+Your branch is up to date with 'origin/main'.
+From https://github.com/Yassine00GH/Devops_Event_Flow
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+Switched to a new branch 'docs/readme'
+```
+
+### 1.2 Création et commit de `README.md` et `docs/COMPTES_ET_PROFILS.md`
+
+```bash
+git add README.md docs/COMPTES_ET_PROFILS.md
+git commit -m "docs: ajouter le README et la documentation des profils"
+```
+Sortie (`$? = 0`) :
+```text
+[docs/readme be9382d] docs: ajouter le README et la documentation des profils
+ 2 files changed, 62 insertions(+)
+ create mode 100644 README.md
+ create mode 100644 docs/COMPTES_ET_PROFILS.md
+```
+
+### 1.3 Publication de la branche et fusion PR #1 (`Create a merge commit` / `--no-ff`)
+- Commande push : `git push -u origin docs/readme`
+- PR #1 (`docs/readme` → `main`) : *(à compléter après fusion sur GitHub avec le graphe `git log --oneline --graph --decorate --all -n 10`)*
 
 ## Étape 2 — Script de contrôle
 - Succès (`$? = 0`) / Échecs (`$? = 1`) :
