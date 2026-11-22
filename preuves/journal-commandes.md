@@ -285,11 +285,179 @@ Sortie (`$? = 0`) :
 ```
 
 ### 1.3 Publication de la branche et fusion PR #1 (`Create a merge commit` / `--no-ff`)
-- Commande push : `git push -u origin docs/readme`
-- PR #1 (`docs/readme` → `main`) : *(à compléter après fusion sur GitHub avec le graphe `git log --oneline --graph --decorate --all -n 10`)*
 
-## Étape 2 — Script de contrôle
-- Succès (`$? = 0`) / Échecs (`$? = 1`) :
+```bash
+git add preuves/journal-commandes.md
+git commit -m "docs: journaliser les commandes de l'étape 1"
+git push -u origin docs/readme
+```
+Sortie (`$? = 0`) :
+```text
+[docs/readme fdcab64] docs: journaliser les commandes de l'étape 1
+ 1 file changed, 35 insertions(+), 1 deletion(-)
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new branch]      docs/readme -> docs/readme
+branch 'docs/readme' set up to track 'origin/docs/readme'.
+```
+
+- **PR #1 fusionnée (`Create a merge commit` / `--no-ff`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/1` (merge commit `25c2dc8`).
+
+```bash
+git switch main
+git pull --ff-only origin main
+git branch -d docs/readme
+git branch -a
+git log --oneline --graph --decorate --all -n 10
+```
+Sortie (`$? = 0`) :
+```text
+Switched to branch 'main'
+From https://github.com/Yassine00GH/Devops_Event_Flow
+ * branch            main       -> FETCH_HEAD
+   f53317d..25c2dc8  main       -> origin/main
+Updating f53317d..25c2dc8
+Fast-forward
+ README.md                    | 49 ++++++++++++++++++++++++++++++++++++++++++++
+ docs/COMPTES_ET_PROFILS.md   | 13 ++++++++++++
+ preuves/journal-commandes.md | 36 +++++++++++++++++++++++++++++++-
+ 3 files changed, 97 insertions(+), 1 deletion(-)
+Deleted branch docs/readme (was fdcab64).
+* main
+  remotes/origin/docs/readme
+  remotes/origin/main
+*   25c2dc8 (HEAD -> main, origin/main) Merge pull request #1 from Yassine00GH/docs/readme
+|\  
+| * fdcab64 (origin/docs/readme) docs: journaliser les commandes de l'étape 1
+| * be9382d docs: ajouter le README et la documentation des profils
+|/  
+* f53317d docs: détailler les commandes et sorties de l'étape 0 dans le journal
+* 02a1d10 docs: ajouter la documentation et le journal de preuves
+* 4ba2d64 feat: importer le frontend Next.js
+* 7c99fef feat: importer le backend Spring Boot sans secrets
+* eb544b2 chore: configurer gitignore et fins de ligne LF
+```
+
+---
+
+## Étape 2 — Script de contrôle (`chore/project-check` + PR #2)
+
+### 2.1 Préparation de la branche et création de `scripts/check-project.sh`
+
+```bash
+git pull --ff-only origin main
+git switch -c chore/project-check
+mkdir -p scripts
+chmod +x scripts/check-project.sh
+file scripts/check-project.sh
+```
+Sortie (`$? = 0`) :
+```text
+From https://github.com/Yassine00GH/Devops_Event_Flow
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+Switched to a new branch 'chore/project-check'
+scripts/check-project.sh: Bourne-Again shell script, Unicode text, UTF-8 text executable
+```
+
+### 2.2 Test 1 — Échec attendu avant commit (dépôt sale) et vérification `stderr`
+
+```bash
+./scripts/check-project.sh
+echo "Code sortie (attendu 1) : $?"
+./scripts/check-project.sh 1>/dev/null
+echo "Code sortie stderr check : $?"
+```
+Sortie :
+```text
+[CHECK] EventFlow Full-Stack
+[OK] présent : README.md
+[OK] présent : .gitignore
+[OK] présent : .gitattributes
+[OK] présent : docs/COMPTES_ET_PROFILS.md
+[OK] présent : backend/pom.xml
+[OK] présent : backend/.env.example
+[OK] présent : frontend/package.json
+[OK] aucun .env ni consignes/ suivi par Git
+[ERREUR] modifications locales non validées détectées (git status --porcelain)
+[ECHEC] 1 erreur(s) détectée(s)
+Code sortie (attendu 1) : 1
+
+(avec 1>/dev/null, stderr seul :)
+[ERREUR] modifications locales non validées détectées (git status --porcelain)
+[ECHEC] 1 erreur(s) détectée(s)
+Code sortie stderr check : 1
+```
+
+### 2.3 Commit du script et Test 2 — Succès attendu (`$? = 0`)
+
+```bash
+git add scripts/check-project.sh
+git commit -m "chore: ajouter le script de contrôle du projet"
+./scripts/check-project.sh
+echo "Code sortie (attendu 0) : $?"
+```
+Sortie :
+```text
+[chore/project-check 27221b5] chore: ajouter le script de contrôle du projet
+ 1 file changed, 82 insertions(+)
+ create mode 100755 scripts/check-project.sh
+[CHECK] EventFlow Full-Stack
+[OK] présent : README.md
+[OK] présent : .gitignore
+[OK] présent : .gitattributes
+[OK] présent : docs/COMPTES_ET_PROFILS.md
+[OK] présent : backend/pom.xml
+[OK] présent : backend/.env.example
+[OK] présent : frontend/package.json
+[OK] aucun .env ni consignes/ suivi par Git
+[OK] dépôt propre
+[SUCCES] tous les contrôles sont validés
+Code sortie (attendu 0) : 0
+```
+
+### 2.4 Test 3 — Échec attendu sur fichier manquant puis restauration (`$? = 1` puis `$? = 0`)
+
+```bash
+mv README.md /tmp/README.md.bak
+./scripts/check-project.sh
+echo "Code sortie (attendu 1) : $?"
+mv /tmp/README.md.bak README.md
+./scripts/check-project.sh
+echo "Code sortie (attendu 0) : $?"
+```
+Sortie :
+```text
+[CHECK] EventFlow Full-Stack
+[ERREUR] fichier absent : README.md
+[OK] présent : .gitignore
+[OK] présent : .gitattributes
+[OK] présent : docs/COMPTES_ET_PROFILS.md
+[OK] présent : backend/pom.xml
+[OK] présent : backend/.env.example
+[OK] présent : frontend/package.json
+[OK] aucun .env ni consignes/ suivi par Git
+[ERREUR] modifications locales non validées détectées (git status --porcelain)
+[ECHEC] 2 erreur(s) détectée(s)
+Code sortie (attendu 1) : 1
+
+(après restauration de README.md :)
+[CHECK] EventFlow Full-Stack
+[OK] présent : README.md
+[OK] présent : .gitignore
+[OK] présent : .gitattributes
+[OK] présent : docs/COMPTES_ET_PROFILS.md
+[OK] présent : backend/pom.xml
+[OK] présent : backend/.env.example
+[OK] présent : frontend/package.json
+[OK] aucun .env ni consignes/ suivi par Git
+[OK] dépôt propre
+[SUCCES] tous les contrôles sont validés
+Code sortie (attendu 0) : 0
+```
+
+### 2.5 Publication et PR #2 (`chore/project-check` → `main`)
+- Push : `git push -u origin chore/project-check`
+- PR #2 (`chore/project-check` → `main`) : *(fusion `--no-ff` à compléter après validation sur GitHub)*
 
 ## Étape 3 — Conteneurisation (`v1.0` -> `v1.1`)
 - Tailles `docker image ls` / `whoami` / `HEALTHCHECK` :
