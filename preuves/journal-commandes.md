@@ -895,17 +895,287 @@ git commit -m "ci: ajouter le workflow CI (contrôle, tests front/back et 3 buil
 ./scripts/check-project.sh
 git push -u origin ci/workflow
 ```
-- **URL exécution verte (PR #5 `ci/workflow` → `main`)** : *(à compléter après exécution sur GitHub Actions)*
+- **PR #5 fusionnée (`Create a merge commit` / `--no-ff`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/5` (merge commit `04995d2`).
+- **URL exécution verte (PR #5)** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45045828874`
+  ```text
+  Contrôle du projet: completed / success
+  Tests frontend: completed / success
+  Tests backend: completed / success
+  Build des 3 images Docker: completed / success
+  Artefacts : rapport-tests-frontend (1033 B), rapport-tests-backend (19229 B)
+  ```
+
+```bash
+git switch main
+git pull --ff-only origin main
+git branch -d ci/workflow
+```
+Sortie (`$? = 0`) :
+```text
+Updating e3c0473..04995d2
+Fast-forward
+Deleted branch ci/workflow (was 0960771).
+```
 
 ### 5.2 PR volontairement rouge (`demo/pipeline-rouge` → `main`, PR #6 laissée ouverte)
-- **URL exécution rouge + 1re erreur utile** : *(à compléter après ouverture de la PR #6)*
 
-## Étape 6 — Release `v1.0.0` et staging
-- Digest images GHCR + sortie `wait-healthy.sh` :
+```bash
+git switch -c demo/pipeline-rouge
+# Modification volontaire dans HealthController.java : "status", "ok" -> "status", "up"
+git add backend/src/main/java/com/iset/events/controller/HealthController.java
+git commit -m "test(demo): provoquer un échec volontaire pour la soutenance"
+git push -u origin demo/pipeline-rouge
+git switch main
+```
+Sortie (`$? = 0`) :
+```text
+[demo/pipeline-rouge 36d7e56] test(demo): provoquer un échec volontaire pour la soutenance
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new branch]      demo/pipeline-rouge -> demo/pipeline-rouge
+Switched to branch 'main'
+```
 
-## Étape 7 — Incident `v1.1.0` et rollback `v1.0.0`
-- Sortie `wait-healthy.sh` en échec (`v1.1.0`) + logs :
-- Sortie `wait-healthy.sh` après rollback (`v1.0.0`) + durée :
+- **PR #6 ouverte (NE PAS FUSIONNER)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/6`
+- **URL exécution rouge (PR #6)** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45047350051`
+  ```text
+  Contrôle du projet: completed / success
+  Tests frontend: completed / success
+  Tests backend: completed / failure
+  Build des 3 images Docker: completed / skipped (bloqué par needs)
+  Artefacts conservés (if: always()) : rapport-tests-backend (20303 B), rapport-tests-frontend (1041 B)
+  1re erreur utile : JSON path "$.status" expected:<ok> but was:<up>
+  ```
 
-## Étape 8 — Bonus
-- Preuve protection `main` / matrice / tag `v1.2.0` :
+---
+
+## Étape 6 — Release `v1.0.0` et mise en service staging (`feat/staging` + PR #7 + tag `v1.0.0`)
+
+### 6.1 Préparation de la livraison GHCR et des scripts staging (`feat/staging`)
+
+```bash
+git switch -c feat/staging
+chmod +x scripts/wait-healthy.sh scripts/deploy-staging.sh
+bash -n scripts/wait-healthy.sh scripts/deploy-staging.sh scripts/check-project.sh
+git add .github/workflows/ci.yml compose.staging.yaml .env.staging.example .env.deploy.example \
+  scripts/wait-healthy.sh scripts/deploy-staging.sh scripts/check-project.sh preuves/journal-commandes.md
+git commit -m "feat(staging): ajouter compose staging, scripts de santé et publication GHCR"
+./scripts/check-project.sh
+git push -u origin feat/staging
+```
+
+### 6.2 Tag annoté `v1.0.0`, publication GHCR et déploiement staging (`http://localhost:8082`)
+
+- **PR #7 fusionnée (`Create a merge commit` / `--no-ff`)** : merge commit `30f0a7b`, CI verte (`runs/45048819727` & `runs/45049280290`).
+
+```bash
+git switch main
+git pull --ff-only origin main
+git branch -d feat/staging
+./scripts/check-project.sh
+git tag -a v1.0.0 -m "Release 1.0.0 : première version full-stack immuable"
+git show --stat v1.0.0
+git push origin v1.0.0
+```
+Sortie (`$? = 0`) :
+```text
+Updating 04995d2..30f0a7b
+Fast-forward
+Deleted branch feat/staging (was fd1029e).
+[SUCCES] tous les contrôles sont validés
+tag v1.0.0
+Tagger: Yassine Ghorbel <yassineghorbel62@gmail.com>
+Release 1.0.0 : première version full-stack immuable
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new tag]         v1.0.0 -> v1.0.0
+```
+
+- **Packages GHCR passés en Public** : `eventflow-backend`, `eventflow-frontend`, `eventflow-proxy`.
+- **Port staging configuré (`STAGING_PORT:-8082`)** : le port `8080` étant déjà occupé sur l'hôte Windows, le port externe staging est paramétrable via `STAGING_PORT` (défaut `8082`, interne Nginx inchangé à `8080`).
+
+```bash
+# Préparation de .env.staging local (chmod 600, aucun secret affiché)
+git check-ignore -v .env.staging .env.deploy
+./scripts/deploy-staging.sh v1.0.0
+echo "Code sortie : $?"
+docker compose --env-file .env.deploy -f compose.staging.yaml ps
+curl -fsS http://localhost:8082/health
+curl -fsSI http://localhost:8082/ | head -n 5
+```
+Sortie (`$? = 0`) :
+```text
+.gitignore:7:.env.*	.env.staging
+.gitignore:7:.env.*	.env.deploy
+
+[DEPLOY] 19:14:24 déploiement de ghcr.io/yassine00gh/eventflow-*:v1.0.0 (port 8082)
+ ✔ Image ghcr.io/yassine00gh/eventflow-proxy:v1.0.0    Pulled   1.7s
+ ✔ Image ghcr.io/yassine00gh/eventflow-backend:v1.0.0  Pulled   1.6s
+ ✔ Image ghcr.io/yassine00gh/eventflow-frontend:v1.0.0 Pulled   1.6s
+ ✔ Container eventflow-staging-db-1       Healthy   1.3s
+ ✔ Container eventflow-staging-backend-1  Healthy  12.5s
+ ✔ Container eventflow-staging-frontend-1 Healthy  12.5s
+ ✔ Container eventflow-staging-proxy-1    Started  12.2s
+{"database":"up","status":"ok"}
+[SANTE] staging sain : http://localhost:8082/health
+[DEPLOY] 19:14:39 version v1.0.0 en service et saine
+Code sortie : 0
+
+NAME                           IMAGE                                           STATUS                    PORTS
+eventflow-staging-backend-1    ghcr.io/yassine00gh/eventflow-backend:v1.0.0    Up 11 seconds (healthy)   2525/tcp
+eventflow-staging-db-1         postgres:17-alpine                              Up 2 minutes (healthy)    5432/tcp
+eventflow-staging-frontend-1   ghcr.io/yassine00gh/eventflow-frontend:v1.0.0   Up 2 minutes (healthy)    3000/tcp
+eventflow-staging-proxy-1      ghcr.io/yassine00gh/eventflow-proxy:v1.0.0      Up (healthy)              0.0.0.0:8082->8080/tcp
+
+HTTP/1.1 200 OK
+Server: nginx/1.27.5
+```
+
+```bash
+docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/yassine00gh/eventflow-backend:v1.0.0
+docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/yassine00gh/eventflow-frontend:v1.0.0
+docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/yassine00gh/eventflow-proxy:v1.0.0
+```
+Sortie (`$? = 0`) :
+```text
+ghcr.io/yassine00gh/eventflow-backend@sha256:d3359c14e37676c5f62775a07f84ec1a18a92b781399037f09bae556bc174833
+ghcr.io/yassine00gh/eventflow-frontend@sha256:37de2db0afa8b42d699f303fcb63984ec274036eebbfa4e027076d7562118d7f
+ghcr.io/yassine00gh/eventflow-proxy@sha256:644f836257d2988c3510d54ac359b26b91657af37952d9a1fb3c10832c5416e2
+```
+
+## Étape 7 — Incident `v1.1.0`, rollback `v1.0.0` et correctif `v1.1.1`
+
+### 7.1 Production de la version défectueuse `v1.1.0` (`server.port: 9999`, PR #9 verte)
+
+```bash
+git switch -c feat/port-9999
+# Modification dans backend/src/main/resources/application.yml : port: 2525 -> port: 9999
+git add backend/src/main/resources/application.yml
+git commit -m "feat(backend): basculer le port HTTP interne sur 9999"
+git push -u origin feat/port-9999
+```
+- **PR #9 fusionnée (`Create a merge commit` / `--no-ff`, 4 checks verts malgré le bug car MockMvc n'ouvre pas de port TCP)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/9` (merge commit `e6f6f5a`, commit fautif `d2c55d2`).
+- **Tag `v1.1.0` publié sur GHCR** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45057338075`
+
+```bash
+git switch main && git pull --ff-only origin main
+git branch -d feat/port-9999
+git tag -a v1.1.0 -m "Release 1.1.0"
+git push origin v1.1.0
+```
+Sortie (`$? = 0`) :
+```text
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new tag]         v1.1.0 -> v1.1.0
+```
+
+### 7.2 Déploiement défaillant `v1.1.0` (`exit 1`), sortie `wait-healthy.sh` et journaux
+
+```bash
+docker pull ghcr.io/yassine00gh/eventflow-proxy:v1.1.0
+docker pull ghcr.io/yassine00gh/eventflow-frontend:v1.1.0
+docker pull ghcr.io/yassine00gh/eventflow-backend:v1.1.0
+TRIES=6 time ./scripts/deploy-staging.sh v1.1.0
+echo "Code sortie deploy-staging v1.1.0 (attendu 1) : $?"
+TRIES=3 bash scripts/wait-healthy.sh http://localhost:8082/health
+echo "Code sortie wait-healthy (attendu 1) : $?"
+docker compose --env-file .env.deploy -f compose.staging.yaml logs --tail=35 backend
+```
+Sortie :
+```text
+Heure detection incident : 19:59:50
+[DEPLOY] 19:59:50 déploiement de ghcr.io/yassine00gh/eventflow-*:v1.1.0 (port 8082)
+ ✘ Container eventflow-staging-backend-1  Error dependency backend...     102.8s
+dependency failed to start: container eventflow-staging-backend-1 is unhealthy
+Command exited with non-zero status 1
+Code sortie deploy-staging v1.1.0 (attendu 1) : 1
+
+curl: (7) Failed to connect to localhost port 8082 after 0 ms: Could not connect to server
+[SANTE] tentative 1/3 : service pas encore prêt (attente 5 s)
+[SANTE] tentative 2/3 : service pas encore prêt (attente 5 s)
+[SANTE] tentative 3/3 : service pas encore prêt (attente 5 s)
+[SANTE] staging NON sain après 15 s : http://localhost:8082/health
+Code sortie wait-healthy (attendu 1) : 1
+
+# Première erreur utile relevée dans les journaux backend :
+backend-1 | 2026-11-22T18:59:58.503Z INFO ... TomcatWebServer : Tomcat initialized with port 9999 (http)
+backend-1 | 2026-11-22T19:00:03.953Z INFO ... TomcatWebServer : Tomcat started on port 9999 (http) with context path '/'
+```
+
+### 7.3 Rollback immédiat vers `v1.0.0` (aucune reconstruction, `exit 0`)
+
+```bash
+time ./scripts/deploy-staging.sh v1.0.0
+echo "Code sortie rollback v1.0.0 (attendu 0) : $?"
+docker compose --env-file .env.deploy -f compose.staging.yaml ps
+curl -fsS http://localhost:8082/health
+```
+Sortie (`$? = 0`) :
+```text
+ ✔ Container eventflow-staging-db-1       Healthy   1.3s
+ ✔ Container eventflow-staging-backend-1  Healthy  12.7s
+ ✔ Container eventflow-staging-frontend-1 Healthy  17.3s
+ ✔ Container eventflow-staging-proxy-1    Started  17.3s
+[SANTE] tentative 1/24 : service pas encore prêt (attente 5 s)
+{"status":"ok","database":"up"}
+[SANTE] staging sain : http://localhost:8082/health
+[DEPLOY] 20:02:16 version v1.0.0 en service et saine
+
+real	0m25.694s
+Code sortie rollback v1.0.0 (attendu 0) : 0
+Duree rollback seul (s) : 26
+Duree indisponibilite totale (s) : 146
+
+NAME                           IMAGE                                           STATUS                    PORTS
+eventflow-staging-backend-1    ghcr.io/yassine00gh/eventflow-backend:v1.0.0    Up 21 seconds (healthy)   2525/tcp
+eventflow-staging-db-1         postgres:17-alpine                              Up 50 minutes (healthy)   5432/tcp
+eventflow-staging-frontend-1   ghcr.io/yassine00gh/eventflow-frontend:v1.0.0   Up 10 seconds (healthy)   3000/tcp
+eventflow-staging-proxy-1      ghcr.io/yassine00gh/eventflow-proxy:v1.0.0      Up 5 seconds (healthy)    0.0.0.0:8082->8080/tcp
+```
+
+### 7.4 Correction par `git revert`, post-mortem et release `v1.1.1`
+
+```bash
+git switch -c docs/incident-report
+git revert --no-edit d2c55d2
+git add docs/incident-postmortem.md preuves/journal-commandes.md
+git commit -m "docs: ajouter le compte rendu d'incident v1.1.0 et ses preuves"
+./scripts/check-project.sh
+git push -u origin docs/incident-report
+```
+- Commit revert : `f70d82b Revert "feat(backend): basculer le port HTTP interne sur 9999"` (`port: 9999` → `port: 2525`).
+- **PR #10 fusionnée (`Create a merge commit` / `--no-ff`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/10` (merge commit `cbbe51e`).
+- **Tag `v1.1.1` publié sur GHCR** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45059773356` (`Success` en `4m 11s`).
+
+```bash
+git switch main && git pull --ff-only origin main
+git branch -d docs/incident-report
+git tag -a v1.1.1 -m "Release 1.1.1 : rétablissement du port 2525"
+git push origin v1.1.1
+./scripts/deploy-staging.sh v1.1.1
+echo "Code sortie v1.1.1 : $?"
+curl -fsS http://localhost:8082/health
+```
+Sortie (`$? = 0`) :
+```text
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new tag]         v1.1.1 -> v1.1.1
+{"status":"ok","database":"up"}
+[SANTE] staging sain : http://localhost:8082/health
+[DEPLOY] 20:25:26 version v1.1.1 en service et saine
+Code sortie v1.1.1 : 0
+```
+
+---
+
+## Étape 8 — Bonus (+4 points : protection `main`, matrice Node/Java, deploy auto sur tag `v1.2.0`)
+
+### 8.1 Ajout des matrices (`Node 20/22`, `Java 17/21`) et du job `deploy-staging` sur `ci/bonus-matrice-deploy`
+
+```bash
+git switch -c ci/bonus-matrice-deploy
+git add .github/workflows/ci.yml preuves/journal-commandes.md
+git commit -m "ci(bonus): ajouter matrices Node/Java et déploiement auto staging sur tag"
+./scripts/check-project.sh
+git push -u origin ci/bonus-matrice-deploy
+```
+- **Preuve protection `main` / matrice / tag `v1.2.0`** : *(à compléter après fusion PR #11, activation des règles de branche et publication du tag `v1.2.0`)*
