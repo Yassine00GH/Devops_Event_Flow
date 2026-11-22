@@ -3,7 +3,7 @@
 # Code de sortie : 0 = sain, 1 = non sain.
 set -euo pipefail
 
-URL="${1:-http://localhost:8080/health}"
+URL="${1:-http://localhost:${STAGING_PORT:-8082}/health}"
 TRIES="${TRIES:-24}"
 
 for i in $(seq 1 "$TRIES"); do
