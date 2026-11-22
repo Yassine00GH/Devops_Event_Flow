@@ -1,4 +1,4 @@
-# frontend/Dockerfile (v1.0 — exécution en root, sans HEALTHCHECK)
+# ---------- Étape 1 : build Next.js ----------
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -8,11 +8,21 @@ ARG NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
+# ---------- Étape 2 : exécution légère sous l'utilisateur non-root node ----------
 FROM node:22-alpine
 WORKDIR /app
-ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
+COPY --from=build --chown=node:node /app/public ./public
+
+USER node
 EXPOSE 3000
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:3000/ > /dev/null || exit 1
+
 CMD ["node", "server.js"]
