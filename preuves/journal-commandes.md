@@ -1178,4 +1178,51 @@ git commit -m "ci(bonus): ajouter matrices Node/Java et déploiement auto stagin
 ./scripts/check-project.sh
 git push -u origin ci/bonus-matrice-deploy
 ```
-- **Preuve protection `main` / matrice / tag `v1.2.0`** : *(à compléter après fusion PR #11, activation des règles de branche et publication du tag `v1.2.0`)*
+- **PR #11 fusionnée (`Create a merge commit` / `--no-ff`, 6/6 jobs matrice verts)** : `https://github.com/Yassine00GH/Devops_Event_Flow/pull/11` (merge commit `2a49bf6`, run `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45061679268`).
+- **Secrets GitHub configurés** (`Settings → Secrets and variables → Actions`) : `STAGING_DB_PASSWORD`, `STAGING_JWT_SECRET`, `STAGING_ADMIN_PASSWORD` (aucune valeur en clair dans le dépôt).
+- **Protection de branche `main` activée (+1 pt)** : PR obligatoire (0 approbation), 6 checks requis (`Contrôle du projet`, `Tests frontend (Node 20)`, `Tests frontend (Node 22)`, `Tests backend (Java 17)`, `Tests backend (Java 21)`, `Build et publication des 3 images`), *Do not allow bypassing*.
+
+### 8.2 Publication du tag `v1.2.0` (deploy auto staging +2 pts) et synchronisation `demo/pipeline-rouge`
+
+```bash
+git switch main && git pull --ff-only origin main
+git branch -d ci/bonus-matrice-deploy
+git tag -a v1.2.0 -m "Release 1.2.0 : matrice et déploiement automatique"
+git switch demo/pipeline-rouge && git merge origin/main --no-edit && ./scripts/check-project.sh
+git switch main
+git push origin v1.2.0 && git push origin demo/pipeline-rouge
+```
+Sortie (`$? = 0`) :
+```text
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new tag]         v1.2.0 -> v1.2.0
+   36d7e56..616c728  demo/pipeline-rouge -> demo/pipeline-rouge
+```
+
+- **Run tag `v1.2.0` (7/7 jobs verts, `5m 12s`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45065030416`
+  ```text
+  Contrôle du projet: completed / success
+  Tests frontend (Node 20): completed / success
+  Tests frontend (Node 22): completed / success
+  Tests backend (Java 17): completed / success
+  Tests backend (Java 21): completed / success
+  Build et publication des 3 images: completed / success
+  Déploiement automatique staging: completed / success
+  ```
+- **Run PR #6 rouge synchronisée (matrice + fusion bloquée par protection `main`)** : `https://github.com/Yassine00GH/Devops_Event_Flow/actions/runs/45065038609` (`completed / failure`).
+
+---
+
+## Étape 9 — Finalisation et préparation de la soutenance (`docs/soutenance` + PR #12)
+
+### 9.1 Rédaction des 4 documents finaux et contrôle global
+
+```bash
+git switch -c docs/soutenance
+git add docs/FICHE_PROJET.md docs/DEMO.md docs/QUESTIONS_SOUTENANCE.md docs/RAPPORT_FINAL.md preuves/journal-commandes.md
+git commit -m "docs: ajouter la fiche, le script de démo et le rapport final"
+./scripts/check-project.sh
+git push -u origin docs/soutenance
+```
+- Contrôle final `./scripts/check-project.sh` → code `0` (`[SUCCES] tous les contrôles sont validés`).
+- PR #12 (`docs/soutenance` → `main`) : fusionnée en `--no-ff` (*Create a merge commit*) avec les 6 checks matrice au vert.
