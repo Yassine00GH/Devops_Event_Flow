@@ -964,8 +964,83 @@ git commit -m "feat(staging): ajouter compose staging, scripts de santé et publ
 git push -u origin feat/staging
 ```
 
-### 6.2 Tag annoté `v1.0.0`, publication GHCR et déploiement staging (`http://localhost:8080`)
-- Digest images GHCR + sortie `wait-healthy.sh` : *(à compléter après fusion PR #7 et publication du tag `v1.0.0`)*
+### 6.2 Tag annoté `v1.0.0`, publication GHCR et déploiement staging (`http://localhost:8082`)
+
+- **PR #7 fusionnée (`Create a merge commit` / `--no-ff`)** : merge commit `30f0a7b`, CI verte (`runs/45048819727` & `runs/45049280290`).
+
+```bash
+git switch main
+git pull --ff-only origin main
+git branch -d feat/staging
+./scripts/check-project.sh
+git tag -a v1.0.0 -m "Release 1.0.0 : première version full-stack immuable"
+git show --stat v1.0.0
+git push origin v1.0.0
+```
+Sortie (`$? = 0`) :
+```text
+Updating 04995d2..30f0a7b
+Fast-forward
+Deleted branch feat/staging (was fd1029e).
+[SUCCES] tous les contrôles sont validés
+tag v1.0.0
+Tagger: Yassine Ghorbel <yassineghorbel62@gmail.com>
+Release 1.0.0 : première version full-stack immuable
+To https://github.com/Yassine00GH/Devops_Event_Flow.git
+ * [new tag]         v1.0.0 -> v1.0.0
+```
+
+- **Packages GHCR passés en Public** : `eventflow-backend`, `eventflow-frontend`, `eventflow-proxy`.
+- **Port staging configuré (`STAGING_PORT:-8082`)** : le port `8080` étant déjà occupé sur l'hôte Windows, le port externe staging est paramétrable via `STAGING_PORT` (défaut `8082`, interne Nginx inchangé à `8080`).
+
+```bash
+# Préparation de .env.staging local (chmod 600, aucun secret affiché)
+git check-ignore -v .env.staging .env.deploy
+./scripts/deploy-staging.sh v1.0.0
+echo "Code sortie : $?"
+docker compose --env-file .env.deploy -f compose.staging.yaml ps
+curl -fsS http://localhost:8082/health
+curl -fsSI http://localhost:8082/ | head -n 5
+```
+Sortie (`$? = 0`) :
+```text
+.gitignore:7:.env.*	.env.staging
+.gitignore:7:.env.*	.env.deploy
+
+[DEPLOY] 19:14:24 déploiement de ghcr.io/yassine00gh/eventflow-*:v1.0.0 (port 8082)
+ ✔ Image ghcr.io/yassine00gh/eventflow-proxy:v1.0.0    Pulled   1.7s
+ ✔ Image ghcr.io/yassine00gh/eventflow-backend:v1.0.0  Pulled   1.6s
+ ✔ Image ghcr.io/yassine00gh/eventflow-frontend:v1.0.0 Pulled   1.6s
+ ✔ Container eventflow-staging-db-1       Healthy   1.3s
+ ✔ Container eventflow-staging-backend-1  Healthy  12.5s
+ ✔ Container eventflow-staging-frontend-1 Healthy  12.5s
+ ✔ Container eventflow-staging-proxy-1    Started  12.2s
+{"database":"up","status":"ok"}
+[SANTE] staging sain : http://localhost:8082/health
+[DEPLOY] 19:14:39 version v1.0.0 en service et saine
+Code sortie : 0
+
+NAME                           IMAGE                                           STATUS                    PORTS
+eventflow-staging-backend-1    ghcr.io/yassine00gh/eventflow-backend:v1.0.0    Up 11 seconds (healthy)   2525/tcp
+eventflow-staging-db-1         postgres:17-alpine                              Up 2 minutes (healthy)    5432/tcp
+eventflow-staging-frontend-1   ghcr.io/yassine00gh/eventflow-frontend:v1.0.0   Up 2 minutes (healthy)    3000/tcp
+eventflow-staging-proxy-1      ghcr.io/yassine00gh/eventflow-proxy:v1.0.0      Up (healthy)              0.0.0.0:8082->8080/tcp
+
+HTTP/1.1 200 OK
+Server: nginx/1.27.5
+```
+
+```bash
+docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/yassine00gh/eventflow-backend:v1.0.0
+docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/yassine00gh/eventflow-frontend:v1.0.0
+docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/yassine00gh/eventflow-proxy:v1.0.0
+```
+Sortie (`$? = 0`) :
+```text
+ghcr.io/yassine00gh/eventflow-backend@sha256:d3359c14e37676c5f62775a07f84ec1a18a92b781399037f09bae556bc174833
+ghcr.io/yassine00gh/eventflow-frontend@sha256:37de2db0afa8b42d699f303fcb63984ec274036eebbfa4e027076d7562118d7f
+ghcr.io/yassine00gh/eventflow-proxy@sha256:644f836257d2988c3510d54ac359b26b91657af37952d9a1fb3c10832c5416e2
+```
 
 ## Étape 7 — Incident `v1.1.0` et rollback `v1.0.0`
 - Sortie `wait-healthy.sh` en échec (`v1.1.0`) + logs :

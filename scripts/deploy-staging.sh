@@ -19,18 +19,19 @@ fi
 
 OWNER="${GHCR_OWNER:-$(git remote get-url origin | sed -E 's#.*github\.com[:/]([^/]+)/.*#\1#')}"
 OWNER="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+STAGING_PORT="${STAGING_PORT:-8082}"
 
-printf 'GHCR_OWNER=%s\nIMAGE_TAG=%s\n' "$OWNER" "$TAG" > .env.deploy
+printf 'GHCR_OWNER=%s\nIMAGE_TAG=%s\nSTAGING_PORT=%s\n' "$OWNER" "$TAG" "$STAGING_PORT" > .env.deploy
 
 compose() {
   docker compose --env-file .env.deploy -f compose.staging.yaml "$@"
 }
 
-echo "[DEPLOY] $(date +%T) déploiement de ghcr.io/$OWNER/eventflow-*:$TAG"
+echo "[DEPLOY] $(date +%T) déploiement de ghcr.io/$OWNER/eventflow-*:$TAG (port $STAGING_PORT)"
 compose pull backend frontend proxy
 compose up -d
 
-if bash scripts/wait-healthy.sh http://localhost:8080/health; then
+if bash scripts/wait-healthy.sh "http://localhost:${STAGING_PORT}/health"; then
   echo "[DEPLOY] $(date +%T) version $TAG en service et saine"
 else
   echo "[DEPLOY] $(date +%T) version $TAG NON SAINE — journaux récents :" >&2
