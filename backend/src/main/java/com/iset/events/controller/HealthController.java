@@ -19,7 +19,7 @@ public class HealthController {
     public ResponseEntity<Map<String, String>> health() {
         try {
             jdbcTemplate.queryForObject("SELECT 1", Integer.class);
-            return ResponseEntity.ok(Map.of("status", "ok", "database", "up"));
+            return ResponseEntity.ok(Map.of("status", "up", "database", "up"));
         } catch (Exception e) {
             return ResponseEntity.status(503).body(Map.of("status", "error", "database", "down"));
         }
